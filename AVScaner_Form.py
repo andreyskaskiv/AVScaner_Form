@@ -1,12 +1,12 @@
 import asyncio
 import os
 import random
-import ssl
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp
+import chardet
 from bs4 import BeautifulSoup
 
 from handlers.file_handler import read_file_to_queue, read_file_to_list, write_to_file, load_patterns
@@ -26,28 +26,26 @@ VERBOSE = PARSE_ARGS.verbose
 URL_ENCODE = PARSE_ARGS.url_encode
 PROXY = PARSE_ARGS.proxy
 
-# WSL
-PATH_TO_CAFILE = '/etc/ssl/certs/ca-certificates.crt'
-# PATH_TO_CAFILE = '/home/sky/Programs/pycharm-2024.2.1/cacert.der'
-SSL_CTX = ssl.create_default_context(cafile=PATH_TO_CAFILE)
-
-
 @limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
 async def make_request(url, session):
     proxy_url = PROXY if PROXY else None
-
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
 
     scheme = url.replace('https://', 'http://')
 
     try:
-        async with session.get(scheme, headers=headers,
-                               proxy=proxy_url,
-                               # ssl=SSL_CTX
-                               ) as response:
-            html = await response.text()
-            return url, response.status, html
+        async with session.get(scheme, headers=headers, proxy=proxy_url, ssl=False) as response:
+            try:
+                raw_data = await response.read()  # Считываем данные в "сыром" виде
+                detected_encoding = chardet.detect(raw_data)['encoding']  # Определяем кодировку
+                html = raw_data.decode(detected_encoding,
+                                       errors="ignore")  # Декодируем с учетом кодировки, игнорируя ошибки
+                return url, response.status, html
+
+            except aiohttp.ClientPayloadError as e:
+                print(f'{C.yellow}\n[!] Warning in make_request for {url}: {e}. Some data may be missing.{C.norm}')
+                return url, response.status, None
 
     except aiohttp.ClientError as e:
         print(f'{C.red}[!] HTTP Client Error in make_request for {url}: {e}{C.norm}')
@@ -62,16 +60,18 @@ async def make_request(url, session):
 async def submit_form(method, post_url, form, post_data, session):
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
+    proxy_url = PROXY if PROXY else None  # Добавьте эту строку
 
     try:
         if method.lower() == 'post':
             # print(f" \n====> POST_url: {post_url} | post_data: {post_data}")
-            async with session.post(post_url, params=post_data, headers=headers) as response:
+            async with session.post(post_url, params=post_data, headers=headers, proxy=proxy_url,
+                                    ssl=False) as response:
                 text = await response.text(errors="ignore")
                 return response.status, text, post_url, form, post_data
 
         # print(f" \n====> GET_url: {post_url} | GET_data: {post_data}")
-        async with session.get(post_url, params=post_data, headers=headers) as response:
+        async with session.get(post_url, params=post_data, headers=headers, proxy=proxy_url, ssl=False) as response:
             text = await response.text(errors="ignore")
             return response.status, text, post_url, form, post_data
 
@@ -109,6 +109,10 @@ async def process_forms(forms, form_queue: asyncio.Queue, url):
 
 async def process_link(link, form_queue: asyncio.Queue, session):
     url, response_status, html = await make_request(link, session)
+
+    if html is None:
+        print(f'{C.yellow}[!] Skipping URL due to missing data: {url}{C.norm}')
+        return
 
     loop = asyncio.get_running_loop()
     try:

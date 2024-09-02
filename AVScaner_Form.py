@@ -39,19 +39,49 @@ async def make_request(url, session):
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
 
-    # url = urllib.parse.quote(url, safe=':/?=&') if URL_ENCODE else url
     scheme = url.replace('https://', 'http://')
+
     try:
         async with session.get(scheme, headers=headers,
-                               # proxy=proxy_url,
+                               proxy=proxy_url,
                                # ssl=SSL_CTX
                                ) as response:
             html = await response.text()
             return url, response.status, html
 
-    except Exception as e:
-        print(f'{C.red}[!] Error in make_request for {url}: {e}{C.norm}')
+    except aiohttp.ClientError as e:
+        print(f'{C.red}[!] HTTP Client Error in make_request for {url}: {e}{C.norm}')
         return url, None, None
+
+    except Exception as e:
+        print(f'{C.red}[!] Unexpected Error in make_request for {url}: {e}{C.norm}')
+        return url, None, None
+
+
+@limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
+async def submit_form(method, post_url, form, post_data, session):
+    user_agent = random.choice(USER_AGENTS)
+    headers = {'User-Agent': user_agent}
+
+    try:
+        if method.lower() == 'post':
+            # print(f" \n====> POST_url: {post_url} | post_data: {post_data}")
+            async with session.post(post_url, params=post_data, headers=headers) as response:
+                text = await response.text(errors="ignore")
+                return response.status, text, post_url, form, post_data
+
+        # print(f" \n====> GET_url: {post_url} | GET_data: {post_data}")
+        async with session.get(post_url, params=post_data, headers=headers) as response:
+            text = await response.text(errors="ignore")
+            return response.status, text, post_url, form, post_data
+
+    except aiohttp.ClientError as e:
+        print(f"An HTTP error occurred in submit_form: {e}")
+        return None, None, post_url, form, post_data
+
+    except Exception as e:
+        print(f"An unexpected error occurred in submit_form: {e}")
+        return None, None, post_url, form, post_data
 
 
 def _extract_forms(html: str):
@@ -59,10 +89,22 @@ def _extract_forms(html: str):
     return parsed_html.findAll("form")
 
 
+async def analyze_response(status, text, url, form, payload, answers):
+    output_folder = OUTPUT
+    os.makedirs(output_folder, exist_ok=True)
+
+    if answers.search(text):
+        print(f'\n{C.bold_green}[+] URL: {url} | Status: {status}{C.norm}\n'
+              f'{C.blue}{form}{C.norm}\n'
+              f'{C.bold_cyan}{payload}{C.norm}')
+
+        output_file = f'{output_folder}/vulnerable_forms.txt'
+        await write_to_file(status, url, form, payload, output_file)
+
+
 async def process_forms(forms, form_queue: asyncio.Queue, url):
     for form in forms:
         await form_queue.put((url, form))
-        # print(f'{C.blue}\n\n{"- " * 50}\nProducer process_forms put form to the queue, {form_queue}{C.norm}')
 
 
 async def process_link(link, form_queue: asyncio.Queue, session):
@@ -92,20 +134,6 @@ async def get_form_page(link_queue: Queue, form_queue: Queue, session):
             link_queue.task_done()
 
 
-async def analyze_response(status, text, url, form, payload, answers):
-    output_folder = OUTPUT
-    os.makedirs(output_folder, exist_ok=True)
-
-    if answers.search(text):
-    # if "total" in text:
-        print(f'{C.bold_green}[+] URL: {url} | Status: {status}{C.norm}\n'
-              f'{C.blue}{form}{C.norm}\n'
-              f'{C.bold_cyan}{payload}{C.norm}')
-
-        output_file = f'{output_folder}/vulnerable_forms.txt'
-        await write_to_file(f'URL: {url} | Status: {status}', output_file)
-
-
 async def generate_payload_forms(forms, payloads):
     forms_with_payload = []
     scheme = forms[0].replace('https://', 'http://')
@@ -133,21 +161,6 @@ async def generate_payload_forms(forms, payloads):
 
         forms_with_payload.append((method, post_url, forms[1], post_data))
     return forms_with_payload
-
-
-@limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
-async def submit_form(method, post_url, form, post_data, session):
-
-    if method.lower() == 'post':
-        # print(f" \n====> POST_url: {post_url} | post_data: {post_data}")
-        async with session.post(post_url, params=post_data) as response:
-            text = await response.text(errors="ignore")
-            return (response.status, text, post_url, form, post_data)
-
-    # print(f" \n====> GET_url: {post_url} | GET_data: {post_data}")
-    async with session.get(post_url, params=post_data) as response:
-        text = await response.text(errors="ignore")
-        return (response.status, text, post_url, form, post_data)
 
 
 async def process_form(forms, payloads, answers, session):
@@ -185,8 +198,6 @@ async def cancel_tasks(tasks):
             await task
         except asyncio.CancelledError:
             pass
-
-
 
 @timer_decorator
 async def main():

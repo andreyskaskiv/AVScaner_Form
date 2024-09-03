@@ -4,7 +4,7 @@ import random
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
-
+from aiohttp import ClientConnectorCertificateError, ClientSSLError
 import aiohttp
 import chardet
 from bs4 import BeautifulSoup
@@ -51,6 +51,10 @@ async def make_request(url, session):
             except aiohttp.ClientPayloadError as e:
                 print(f'{C.yellow}\n[!] Warning in make_request for {url}: {e}. Some data may be missing.{C.norm}')
                 return url, response.status, None
+
+    except (ClientConnectorCertificateError, ClientSSLError) as ssl_error:
+        print(f'{C.red}[!] SSL Error in make_request for {url}: {ssl_error}{C.norm}')
+        return url, None, None
 
     except aiohttp.ClientError as e:
         print(f'{C.red}[!] HTTP Client Error in make_request for {url}: {e}{C.norm}')
@@ -239,7 +243,9 @@ async def main():
     producer = asyncio.create_task(read_file_to_queue(INPUT, link_queue))
 
     timeout_for_all_requests = aiohttp.ClientTimeout(total=TIMEOUT)
-    async with aiohttp.ClientSession(timeout=timeout_for_all_requests) as session:
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False),
+                                     timeout=timeout_for_all_requests
+                                     ) as session:
         form_getters = [
             asyncio.create_task(
                 get_form_page(link_queue=link_queue,

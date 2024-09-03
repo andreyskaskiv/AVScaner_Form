@@ -14,6 +14,5 @@ print `ls -la`
 using System; using System.Diagnostics; class Program { static void Main() { ProcessStartInfo startInfo = new ProcessStartInfo() { FileName = /bin/bash, Arguments = -c ls -la, RedirectStandardOutput = true }; Process process = new Process() { StartInfo = startInfo, }; process.Start(); string output = process.StandardOutput.ReadToEnd(); Console.WriteLine(output); } }
 package main; import ( os/exec fmt ); func main() { out, err := exec.Command(ls, -la).Output(); if err != nil { fmt.Printf(%s, err) } output := string(out[:]); fmt.Println(output) }
 use std::process::Command; fn main() { let output = Command::new(ls).arg(-la).output().expect(Failed to execute command); println!({}, String::from_utf8_lossy(&output.stdout)); }
-import Foundation; let task = Process(); task.launchPath = /bin/ls; task.arguments = [-la]; let pipe = Pipe(); task.standardOutput = pipe; task.launch(); let data = pipe.fileHandleForReading.readDataToEndOfFile(); let output = String(data: data, encoding: .utf8); print(output ?? '')
 & dir
 dir

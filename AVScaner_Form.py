@@ -1,13 +1,16 @@
 import asyncio
 import os
 import random
+import re
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
-from aiohttp import ClientConnectorCertificateError, ClientSSLError
+from typing import List
+
 import aiohttp
 import chardet
-from bs4 import BeautifulSoup
+from aiohttp import ClientConnectorCertificateError, ClientSSLError
+from bs4 import BeautifulSoup, Tag
 
 from handlers.file_handler import (read_file_to_queue,
                                    read_file_to_list,
@@ -30,9 +33,11 @@ VERBOSE = PARSE_ARGS.verbose
 VERBOSE_REQUESTS = PARSE_ARGS.verbose_requests
 POST_METHOD = PARSE_ARGS.post
 PROXY = PARSE_ARGS.proxy
+from typing import Tuple, Optional, Union
+from aiohttp import ClientSession
 
 @limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
-async def make_request(url, session):
+async def make_request(url: str, session: ClientSession) -> Tuple[str, Optional[Union[int, None]], Optional[str]]:
     proxy_url = PROXY if PROXY else None
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
@@ -66,7 +71,12 @@ async def make_request(url, session):
 
 
 @limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
-async def submit_form(method, post_url, form, post_data, session):
+async def submit_form(
+        method: str,
+        post_url: str,
+        form: object,
+        post_data: dict,
+        session: ClientSession) -> Tuple[Optional[int], Optional[str], str, object, dict]:
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
     proxy_url = PROXY if PROXY else None
@@ -95,12 +105,12 @@ async def submit_form(method, post_url, form, post_data, session):
         return None, None, post_url, form, post_data
 
 
-def _extract_forms(html: str):
+def _extract_forms(html: str) -> list[Tag]:
     parsed_html = BeautifulSoup(html, features='lxml')
     return parsed_html.findAll("form")
 
 
-async def analyze_response(status, text, url, form, payload, answers):
+async def analyze_response(status: int, text: str, url: str, form: object, payload: dict, answers: re.Pattern):
     output_folder = OUTPUT
     os.makedirs(output_folder, exist_ok=True)
 
@@ -155,7 +165,7 @@ async def process_link(link, form_queue: asyncio.Queue, session):
         print(f'Error in ThreadPoolExecutor: {e}')
 
 
-async def get_form_page(link_queue: Queue, form_queue: Queue, session):
+async def get_form_page(link_queue: Queue, form_queue: Queue, session: ClientSession):
     while True:
         link = await link_queue.get()
 
@@ -167,7 +177,7 @@ async def get_form_page(link_queue: Queue, form_queue: Queue, session):
             link_queue.task_done()
 
 
-async def generate_payload_forms(forms, payloads):
+async def generate_payload_forms(forms: list, payloads: list[str]) -> list[tuple[str, str, object, dict[str, str]]]:
     forms_with_payload = []
     scheme = forms[0].replace('https://', 'http://')
 
@@ -212,7 +222,7 @@ async def process_form(forms, payloads, answers, session):
             await analyze_response(status=status, text=text, url=url, form=form, payload=payload, answers=answers)
 
 
-async def command_injection(form_queue: Queue, payloads, answers, session):
+async def command_injection(form_queue: Queue, payloads: list[str], answers: re.Pattern, session: ClientSession):
     while True:
         forms = await form_queue.get()
 
@@ -224,13 +234,15 @@ async def command_injection(form_queue: Queue, payloads, answers, session):
             form_queue.task_done()
 
 
-async def cancel_tasks(tasks):
+async def cancel_tasks(tasks: list[asyncio.Task]):
     for task in tasks:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
 
 @timer_decorator
 async def main():
@@ -243,9 +255,10 @@ async def main():
     producer = asyncio.create_task(read_file_to_queue(INPUT, link_queue))
 
     timeout_for_all_requests = aiohttp.ClientTimeout(total=TIMEOUT)
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False),
-                                     timeout=timeout_for_all_requests
-                                     ) as session:
+    async with (aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=100, ssl=False, keepalive_timeout=30),
+            timeout=timeout_for_all_requests)
+    as session):
         form_getters = [
             asyncio.create_task(
                 get_form_page(link_queue=link_queue,

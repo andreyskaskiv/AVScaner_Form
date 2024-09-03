@@ -79,7 +79,7 @@ python AVScaner_Form.py -c 5
 
 
 13/18 🐸  
-[+] URL: http://example.com/wp-content/uploads/2024/08/404.php | Status: 200
+[+] URL: http://example.com/wp-content/uploads/2024/08/404.php | Status: 200 | Response time: 0.11 sec
 <form method="GET" name="404.php">
 <input id="cmd" name="cmd" size="80" type="TEXT"/>
 <input type="SUBMIT" value="Execute"/>
@@ -87,7 +87,7 @@ python AVScaner_Form.py -c 5
 {'cmd': 'ls -la'}
 
 17/18 🐦  
-[+] URL: http://example.com/equipments/adapter | Status: 200
+[+] URL: http://example.com/equipments/adapter | Status: 200 | Response time: 0.32 sec
 <form method="GET" name="index.php">
 <input id="cmd" name="cmd" size="80" type="TEXT"/>
 <input type="SUBMIT" value="iQ Freeze"/>

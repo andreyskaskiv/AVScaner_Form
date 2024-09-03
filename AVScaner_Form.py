@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import re
+import time
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
@@ -77,26 +78,30 @@ async def submit_form(
         post_url: str,
         form: object,
         post_data: dict,
-        session: ClientSession) -> Tuple[Optional[int], Optional[str], str, object, dict]:
+        session: ClientSession) -> tuple[int, str, str, object, dict, float] | tuple[None, None, str, object, dict]:
 
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
     proxy_url = PROXY if PROXY else None
 
     try:
+        start_time = time.perf_counter()
         if method.lower() == 'post' and POST_METHOD == 'post':
             if VERBOSE_REQUESTS == 'vv':
                 print(f"[*] POST_url: {post_url} | post_data: {post_data}")
+
             async with session.post(post_url, params=post_data, headers=headers, proxy=proxy_url,
                                     ssl=False) as response:
+                elapsed_time = time.perf_counter() - start_time
                 text = await response.text(errors="ignore")
-                return response.status, text, post_url, form, post_data
+                return response.status, text, post_url, form, post_data, elapsed_time
 
         if VERBOSE_REQUESTS == 'vv':
             print(f"[*] GET_url: {post_url} | GET_data: {post_data}")
         async with session.get(post_url, params=post_data, headers=headers, proxy=proxy_url, ssl=False) as response:
+            elapsed_time = time.perf_counter() - start_time
             text = await response.text(errors="ignore")
-            return response.status, text, post_url, form, post_data
+            return response.status, text, post_url, form, post_data, elapsed_time
 
     except aiohttp.ClientError as e:
         print(f"An HTTP error occurred in submit_form: {e}")
@@ -112,35 +117,36 @@ def _extract_forms(html: str) -> list[Tag]:
     return parsed_html.findAll("form")
 
 
-async def analyze_response(status: int, text: str, url: str, form: object, payload: dict, answers: re.Pattern):
+async def analyze_response(status: int, text: str, url: str, form: object, payload: dict, answers: re.Pattern,
+                           response_time: float):
     output_folder = OUTPUT
     os.makedirs(output_folder, exist_ok=True)
 
     if answers.search(text):
-        print(f'\n{C.bold_green}[+] URL: {url} | Status: {status}{C.norm}\n'
+        print(f'\n{C.bold_green}[+] URL: {url} | Status: {status} | Response time: {C.bold_magenta}{response_time:.2f} sec{C.norm}\n'
               f'{C.blue}{form}{C.norm}\n'
               f'{C.bold_cyan}{payload}{C.norm}\n')
 
         output_file = f'{output_folder}/vulnerable_forms.txt'
-        await writing_to_file_of_successful_payload(status, url, form, payload, output_file)
+        await writing_to_file_of_successful_payload(status, url, form, payload, response_time, output_file)
 
     elif status == 403 and VERBOSE == 'v':
-        print(f'{C.norm}[-] URL: {url} | Status: {C.bold_red}{status} | Payload: {payload}{C.norm}')
+        print(f'{C.norm}[-] URL: {url} | Status: {C.bold_red}{status} | Response time: {response_time:.2f} sec | Payload: {payload}{C.norm}')
 
         output_file = f'{output_folder}/403_forms.txt'
-        await write_to_file(f'URL: {url} | Status: {status} | Payload: {payload}', output_file)
+        await write_to_file(f'URL: {url} | Status: {status} | Response time: {response_time:.2f} sec | Payload: {payload}', output_file)
 
     elif status == 429 and VERBOSE == 'v':
-        print(f'{C.red}[-] Too many requests, URL: {url} | Status: {C.bold_red}{status} {C.norm}')
+        print(f'{C.red}[-] Too many requests, URL: {url} | Status: {C.bold_red}{status} | Response time: {response_time:.2f} sec{C.norm}')
 
         output_file = f'{output_folder}/429_forms.txt'
-        await write_to_file(f'URL: {url} | Status: {status}', output_file)
+        await write_to_file(f'URL: {url} | Status: {status} | Response time: {response_time:.2f} sec', output_file)
 
     elif status != 200 and VERBOSE == 'v':
-        print(f'{C.bold_red}[-] URL: {url} | Status: {status} {C.norm}')
+        print(f'{C.bold_red}[-] URL: {url} | Status: {status} | Response time: {response_time:.2f} sec{C.norm}')
 
     elif VERBOSE == 'v':
-        print(f'{C.norm}[-] URL: {url} | Status: {status} {C.norm}')
+        print(f'{C.norm}[-] URL: {url} | Status: {status} | Response time: {response_time:.2f} sec{C.norm}')
 
 
 async def process_forms(forms: list[Tag], form_queue: asyncio.Queue, url: str):
@@ -222,7 +228,8 @@ async def process_form(forms: FormUrl, payloads: list[str], answers: re.Pattern,
         submit_form(method=form.method, post_url=form.post_url, form=form.form, post_data=form.post_data, session=session)
         for form in forms_with_payload
         if form.method is not None
-    ]
+            ]
+
     if tasks:
         total_requests = len(tasks)
         completed_tasks = 0
@@ -232,13 +239,19 @@ async def process_form(forms: FormUrl, payloads: list[str], answers: re.Pattern,
                    '🦁', '🐮', '🐼', '🐸', '🦒', '🦔', '🐧', '🐦', '🐵', '🐔']
 
         for as_completed in asyncio.as_completed(tasks):
-            status, text, url, form, payload = await as_completed
+            status, text, url, form, payload, response_time  = await as_completed
 
             completed_tasks += 1
             spinner_index = (spinner_index + 1) % len(spinner)
             print(f"{C.norm}\r{completed_tasks}/{total_requests}{C.norm} {spinner[spinner_index]}  ", end='')
 
-            await analyze_response(status=status, text=text, url=url, form=form, payload=payload, answers=answers)
+            await analyze_response(status=status,
+                                   text=text,
+                                   url=url,
+                                   form=form,
+                                   payload=payload,
+                                   answers=answers,
+                                   response_time=response_time)
 
 
 async def command_injection(form_queue: Queue, payloads: list[str], answers: re.Pattern, session: ClientSession):

@@ -5,13 +5,15 @@ import re
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Tuple, Optional, Union, List
 
 import aiohttp
 import chardet
 from aiohttp import ClientConnectorCertificateError, ClientSSLError
+from aiohttp import ClientSession
 from bs4 import BeautifulSoup, Tag
 
+from handlers.DTO import FormUrl, FormRequest
 from handlers.file_handler import (read_file_to_queue,
                                    read_file_to_list,
                                    write_to_file,
@@ -33,8 +35,7 @@ VERBOSE = PARSE_ARGS.verbose
 VERBOSE_REQUESTS = PARSE_ARGS.verbose_requests
 POST_METHOD = PARSE_ARGS.post
 PROXY = PARSE_ARGS.proxy
-from typing import Tuple, Optional, Union
-from aiohttp import ClientSession
+
 
 @limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
 async def make_request(url: str, session: ClientSession) -> Tuple[str, Optional[Union[int, None]], Optional[str]]:
@@ -77,6 +78,7 @@ async def submit_form(
         form: object,
         post_data: dict,
         session: ClientSession) -> Tuple[Optional[int], Optional[str], str, object, dict]:
+
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
     proxy_url = PROXY if PROXY else None
@@ -141,9 +143,10 @@ async def analyze_response(status: int, text: str, url: str, form: object, paylo
         print(f'{C.norm}[-] URL: {url} | Status: {status} {C.norm}')
 
 
-async def process_forms(forms, form_queue: asyncio.Queue, url):
+async def process_forms(forms: list[Tag], form_queue: asyncio.Queue, url: str):
     for form in forms:
-        await form_queue.put((url, form))
+        form_url = FormUrl(url, form)
+        await form_queue.put(form_url)
 
 
 async def process_link(link, form_queue: asyncio.Queue, session):
@@ -177,16 +180,16 @@ async def get_form_page(link_queue: Queue, form_queue: Queue, session: ClientSes
             link_queue.task_done()
 
 
-async def generate_payload_forms(forms: list, payloads: list[str]) -> list[tuple[str, str, object, dict[str, str]]]:
+async def generate_payload_forms(forms: FormUrl, payloads: list[str]) -> list[FormRequest]:
     forms_with_payload = []
-    scheme = forms[0].replace('https://', 'http://')
+    scheme = forms.url.replace('https://', 'http://')
 
     for payload in payloads:
-        action = forms[1].get("action")
+        action = forms.form.get("action")
         post_url = urlparse.urljoin(scheme, action)
-        method = forms[1].get("method")
+        method = forms.form.get("method")
 
-        inputs_list = forms[1].findAll("input")
+        inputs_list = forms.form.findAll("input")
 
         post_data = {}
         for input in inputs_list:
@@ -202,17 +205,23 @@ async def generate_payload_forms(forms: list, payloads: list[str]) -> list[tuple
 
         post_data = {k: v for k, v in post_data.items() if v is not None}
 
-        forms_with_payload.append((method, post_url, forms[1], post_data))
+        form_request = FormRequest(
+            method=method,
+            post_url=post_url,
+            form=forms.form,
+            post_data=post_data)
+
+        forms_with_payload.append(form_request)
     return forms_with_payload
 
 
-async def process_form(forms, payloads, answers, session):
+async def process_form(forms: FormUrl, payloads: list[str], answers: re.Pattern, session: ClientSession):
     forms_with_payload = await generate_payload_forms(forms, payloads)
 
     tasks = [
-        submit_form(method=form[0], post_url=form[1], form=form[2], post_data=form[3], session=session)
+        submit_form(method=form.method, post_url=form.post_url, form=form.form, post_data=form.post_data, session=session)
         for form in forms_with_payload
-        if form[0] is not None
+        if form.method is not None
     ]
 
     if tasks:
@@ -283,7 +292,6 @@ async def main():
 
         await form_queue.join()
         await cancel_tasks(form_getters)
-
 
 
 if __name__ == '__main__':

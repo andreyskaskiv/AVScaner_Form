@@ -223,10 +223,20 @@ async def process_form(forms: FormUrl, payloads: list[str], answers: re.Pattern,
         for form in forms_with_payload
         if form.method is not None
     ]
-
     if tasks:
+        total_requests = len(tasks)
+        completed_tasks = 0
+
+        spinner_index = 0
+        spinner = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐼', '🐻', '🐨', '🐯',
+                   '🦁', '🐮', '🐼', '🐸', '🦒', '🦔', '🐧', '🐦', '🐵', '🐔']
+
         for as_completed in asyncio.as_completed(tasks):
             status, text, url, form, payload = await as_completed
+
+            completed_tasks += 1
+            spinner_index = (spinner_index + 1) % len(spinner)
+            print(f"{C.norm}\r{completed_tasks}/{total_requests}{C.norm} {spinner[spinner_index]}  ", end='')
 
             await analyze_response(status=status, text=text, url=url, form=form, payload=payload, answers=answers)
 

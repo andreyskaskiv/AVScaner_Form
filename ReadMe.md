@@ -81,19 +81,3 @@ python AVScaner_Form.py -c 10 -v -i "input_data/crawled_final.txt" -p "wordlist/
 ```
 
 ---
-
-## Proxy
-####  Windows Subsystem for Linux ([WSL](https://stackoverflow.com/questions/51887784/using-aiohttp-with-proxy/78727608#78727608))
-
-```text
-import aiohttp
-import ssl
-
-url = 'https://example.com'
-proxy_url = 'http://<user>:<pass>@<proxy>:<port>'
-path_to_cafile = '/etc/ssl/certs/ca-certificates.crt'
-ssl_ctx = ssl.create_default_context(cafile=path_to_cafile)
-
-async with aiohttp.ClientSession() as session:
-    async with session.get(url, proxy=proxy_url, ssl=ssl_ctx) 
-```

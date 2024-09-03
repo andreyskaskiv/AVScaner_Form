@@ -9,7 +9,11 @@ import aiohttp
 import chardet
 from bs4 import BeautifulSoup
 
-from handlers.file_handler import read_file_to_queue, read_file_to_list, write_to_file, load_patterns
+from handlers.file_handler import (read_file_to_queue,
+                                   read_file_to_list,
+                                   write_to_file,
+                                   load_patterns,
+                                   writing_to_file_of_successful_payload)
 from handlers.parse_arguments import parse_arguments
 from handlers.user_agent import USER_AGENTS
 from handlers.utils import C, timer_decorator, limit_rate_decorator
@@ -102,7 +106,25 @@ async def analyze_response(status, text, url, form, payload, answers):
               f'{C.bold_cyan}{payload}{C.norm}\n')
 
         output_file = f'{output_folder}/vulnerable_forms.txt'
-        await write_to_file(status, url, form, payload, output_file)
+        await writing_to_file_of_successful_payload(status, url, form, payload, output_file)
+
+    elif status == 403 and VERBOSE == 'v':
+        print(f'{C.norm}[-] URL: {url} | Status: {C.bold_red}{status} | Payload: {payload}{C.norm}')
+
+        output_file = f'{output_folder}/403_forms.txt'
+        await write_to_file(f'URL: {url} | Status: {status} | Payload: {payload}', output_file)
+
+    elif status == 429 and VERBOSE == 'v':
+        print(f'{C.red}[-] Too many requests, URL: {url} | Status: {C.bold_red}{status} {C.norm}')
+
+        output_file = f'{output_folder}/429_forms.txt'
+        await write_to_file(f'URL: {url} | Status: {status}', output_file)
+
+    elif status != 200 and VERBOSE == 'v':
+        print(f'{C.bold_red}[-] URL: {url} | Status: {status} {C.norm}')
+
+    elif VERBOSE == 'v':
+        print(f'{C.norm}[-] URL: {url} | Status: {status} {C.norm}')
 
 
 async def process_forms(forms, form_queue: asyncio.Queue, url):

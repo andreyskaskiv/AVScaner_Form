@@ -32,7 +32,11 @@ async def load_patterns(file_path):
     return combined_pattern
 
 
-async def write_to_file(status, url, form, payload, file_path: str):
+async def writing_to_file_of_successful_payload(status, url, form, payload, file_path: str):
     async with aiofiles.open(file_path, mode='a') as f:
         message = f'\n\n{"- "*50}\n\nURL: {url} | Status: {status}\n\n{form}\n\n{payload}'
         await f.write(message)
+
+async def write_to_file(message: str, file_path: str):
+    async with aiofiles.open(file_path, mode='a') as f:
+        await f.write(message + '\n')

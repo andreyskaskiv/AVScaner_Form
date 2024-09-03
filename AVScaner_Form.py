@@ -23,7 +23,8 @@ ANSWERS = PARSE_ARGS.answers
 CALL_LIMIT_PER_SECOND = PARSE_ARGS.concurrency
 TIMEOUT = PARSE_ARGS.timeout
 VERBOSE = PARSE_ARGS.verbose
-URL_ENCODE = PARSE_ARGS.url_encode
+VERBOSE_REQUESTS = PARSE_ARGS.verbose_requests
+POST_METHOD = PARSE_ARGS.post
 PROXY = PARSE_ARGS.proxy
 
 @limit_rate_decorator(calls_limit=CALL_LIMIT_PER_SECOND, timeout=1)
@@ -37,10 +38,10 @@ async def make_request(url, session):
     try:
         async with session.get(scheme, headers=headers, proxy=proxy_url, ssl=False) as response:
             try:
-                raw_data = await response.read()  # Считываем данные в "сыром" виде
-                detected_encoding = chardet.detect(raw_data)['encoding']  # Определяем кодировку
+                raw_data = await response.read()
+                detected_encoding = chardet.detect(raw_data)['encoding']
                 html = raw_data.decode(detected_encoding,
-                                       errors="ignore")  # Декодируем с учетом кодировки, игнорируя ошибки
+                                       errors="ignore")
                 return url, response.status, html
 
             except aiohttp.ClientPayloadError as e:
@@ -60,17 +61,19 @@ async def make_request(url, session):
 async def submit_form(method, post_url, form, post_data, session):
     user_agent = random.choice(USER_AGENTS)
     headers = {'User-Agent': user_agent}
-    proxy_url = PROXY if PROXY else None  # Добавьте эту строку
+    proxy_url = PROXY if PROXY else None
 
     try:
-        if method.lower() == 'post':
-            # print(f" \n====> POST_url: {post_url} | post_data: {post_data}")
+        if method.lower() == 'post' and POST_METHOD == 'post':
+            if VERBOSE_REQUESTS == 'vv':
+                print(f"[*] POST_url: {post_url} | post_data: {post_data}")
             async with session.post(post_url, params=post_data, headers=headers, proxy=proxy_url,
                                     ssl=False) as response:
                 text = await response.text(errors="ignore")
                 return response.status, text, post_url, form, post_data
 
-        # print(f" \n====> GET_url: {post_url} | GET_data: {post_data}")
+        if VERBOSE_REQUESTS == 'vv':
+            print(f"[*] GET_url: {post_url} | GET_data: {post_data}")
         async with session.get(post_url, params=post_data, headers=headers, proxy=proxy_url, ssl=False) as response:
             text = await response.text(errors="ignore")
             return response.status, text, post_url, form, post_data
@@ -96,7 +99,7 @@ async def analyze_response(status, text, url, form, payload, answers):
     if answers.search(text):
         print(f'\n{C.bold_green}[+] URL: {url} | Status: {status}{C.norm}\n'
               f'{C.blue}{form}{C.norm}\n'
-              f'{C.bold_cyan}{payload}{C.norm}')
+              f'{C.bold_cyan}{payload}{C.norm}\n')
 
         output_file = f'{output_folder}/vulnerable_forms.txt'
         await write_to_file(status, url, form, payload, output_file)

@@ -37,15 +37,12 @@ pip install -r requirements.txt
 - [urldedupe](https://github.com/ameenmaali/urldedupe)
 
 ```bash
-uddup -s -u crawled_link.txt | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" | sort -u | urldedupe -s | grep '=' | sort -u > crawled_final.txt
+uddup -s -u crawled_link.txt | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" | sort -u | urldedupe -s > crawled_final.txt
 ```
-or
-```bash
-cat crawled_link.txt | grep -vE "\.js(\?|$)" | p1radup | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*"  > crawled_final.txt
-```
+
 ---
 
-### Use
+### Use:
 ```text
 "-i", "--input", help="Path to the file with links for check"
 "-o", "--output", help="Output folder", default="output_report"
@@ -54,13 +51,16 @@ cat crawled_link.txt | grep -vE "\.js(\?|$)" | p1radup | grep -Eo "(http|https):
 "-c", "--concurrency", help="Number of concurrent requests per sec", default=20)
 "-t", "--timeout", help="Request timeout", default=15 sec)
 "-v", "--verbose", help="Display all responses", default=None)
-"-e", "--url_encode", help="Proper URL encoding", default=None)
+"-vv", "--verbose_requests", help="Display all requests", default=None)
+"-post", "--post", help="Use post method", nargs='?', default=None)
 "-px", "--proxy", help="Proxy for intercepting requests (e.g., http://127.0.0.1:8080)"
 ```
 ```pycon
 python AVScaner_Form.py -c 10 
 
-python AVScaner_Form.py -c 10 -v -px http://127.0.0.1:8080
+python AVScaner_Form.py -c 10 -vv -px http://127.0.0.1:8080
+
+python AVScaner_Form.py -c 10 --post --proxy http://127.0.0.1:8080
 
 python AVScaner_Form.py -c 10 -v -i "input_data/crawled_final.txt" -p "wordlist/payloads_LFI.txt" -a "wordlist/answers_LFI.txt"
 ```

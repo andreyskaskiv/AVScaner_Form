@@ -5,7 +5,7 @@ import re
 import urllib.parse as urlparse
 from asyncio import Queue
 from concurrent.futures import ThreadPoolExecutor
-from typing import Tuple, Optional, Union, List
+from typing import Tuple, Optional, Union
 
 import aiohttp
 import chardet
@@ -149,7 +149,7 @@ async def process_forms(forms: list[Tag], form_queue: asyncio.Queue, url: str):
         await form_queue.put(form_url)
 
 
-async def process_link(link, form_queue: asyncio.Queue, session):
+async def process_link(link: str, form_queue: asyncio.Queue, session: ClientSession):
     url, response_status, html = await make_request(link, session)
 
     if html is None:
@@ -291,7 +291,7 @@ async def main():
         await cancel_tasks(form_getters)
 
         await form_queue.join()
-        await cancel_tasks(form_getters)
+        await cancel_tasks(command_getters)
 
 
 if __name__ == '__main__':
